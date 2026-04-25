@@ -62,7 +62,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
       <div className={`flex ${isMe ? "justify-end" : "justify-start"} mb-3 px-3`}>
         {!isMe && (
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 flex items-center justify-center text-white text-xs font-bold mr-2 mt-1 flex-shrink-0 shadow-md">
-            MA
+            TN
           </div>
         )}
 
@@ -175,7 +175,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
 
         {isMe && (
           <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-400 to-purple-500 flex items-center justify-center text-white text-xs font-bold ml-2 mt-1 flex-shrink-0 shadow-md">
-            YT
+            ME
           </div>
         )}
       </div>
