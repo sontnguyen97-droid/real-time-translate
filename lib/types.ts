@@ -18,12 +18,12 @@ export interface Message {
 export type Language = "en" | "vi";
 
 export const FRIEND_PROFILE = {
-  name: "Minh Anh",
-  avatar: "MA",
+  name: "Thỏ Ngọc",
+  avatar: "you",
   status: "online",
 };
 
 export const MY_PROFILE = {
-  name: "Son",
-  avatar: "S",
+  name: "User",
+  avatar: "me",
 };
