@@ -69,7 +69,10 @@ If no text found, return: []`,
     console.log("Claude status:", res.status);
     console.log("Claude response:", JSON.stringify(data).substring(0, 200));
     const raw = data.content?.[0]?.text?.trim() ?? "[]";
-    const clean = raw.replace(/```json|```/g, "").trim();
+    const clean = raw
+      .replace(/```json\n?/gi, "")
+      .replace(/```\n?/g, "")
+      .trim();
 
     try {
       const blocks = JSON.parse(clean);
