@@ -66,6 +66,7 @@ If no text found, return: []`,
 
     const data = await res.json();
     console.log("Claude full response:", JSON.stringify(data));
+    console.log("Claude status:", res.status);
     console.log("Claude response:", JSON.stringify(data).substring(0, 200));
     const raw = data.content?.[0]?.text?.trim() ?? "[]";
     const clean = raw.replace(/```json|```/g, "").trim();
@@ -79,7 +80,8 @@ If no text found, return: []`,
     } catch {
       return NextResponse.json({ noText: true });
     }
-  } catch {
+  } catch (err) {
+    console.log("OCR error:", err);
     return NextResponse.json({ error: "OCR failed" }, { status: 500 });
   }
 }
