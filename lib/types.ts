@@ -13,17 +13,23 @@ export interface Message {
   translatedPhotoText?: string;
   otherLangPhotoText?: string;
   isProcessingPhoto?: boolean;
+  // Voice message
+  audioUrl?: string;
+  audioBlob?: Blob;
+  transcribedText?: string;
+  translatedAudioText?: string;
+  isTranscribing?: boolean;
 }
 
 export type Language = "en" | "vi";
 
 export const FRIEND_PROFILE = {
-  name: "Thỏ Ngọc",
-  avatar: "you",
+  name: "Minh Anh",
+  avatar: "A",
   status: "online",
 };
 
 export const MY_PROFILE = {
   name: "User",
-  avatar: "me",
+  avatar: "U",
 };
