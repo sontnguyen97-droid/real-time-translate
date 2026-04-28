@@ -15,6 +15,8 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    console.log("Base64 length:", imageBase64?.length);
+    console.log("First 50 chars:", imageBase64?.substring(0, 50));
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
