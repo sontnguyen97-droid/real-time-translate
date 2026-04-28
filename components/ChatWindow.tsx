@@ -18,6 +18,7 @@ export default function ChatWindow() {
   const chatHistoryRef = useRef<{ role: string; content: string }[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
   const scrollToBottom = () => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -52,11 +53,8 @@ export default function ChatWindow() {
       });
       const data = await res.json();
       const replyMsg: Message = {
-        id: generateId(),
-        text: data.reply,
-        sender: "friend",
-        timestamp: new Date(),
-        isTranslating: true,
+        id: generateId(), text: data.reply, sender: "friend",
+        timestamp: new Date(), isTranslating: true,
       };
       chatHistoryRef.current = [...chatHistoryRef.current, { role: "assistant", content: data.reply }];
       setIsTyping(false);
@@ -107,40 +105,38 @@ export default function ChatWindow() {
     const reader = new FileReader();
     reader.onload = async (ev) => {
       const dataUrl = ev.target?.result as string;
-      const base64 = dataUrl.split(",")[1];
       const photoMsg: Message = {
         id: generateId(), text: "", sender: "me",
-        timestamp: new Date(), photoUrl: dataUrl, isProcessingPhoto: true,
+        timestamp: new Date(), photoUrl: dataUrl,
       };
       setMessages(prev => [...prev, photoMsg]);
-      try {
-        const res = await fetch("/api/ocr", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ imageBase64: base64, targetLang: preferredLang }),
-        });
-        const data = await res.json();
-        setMessages(prev => prev.map(m => m.id === photoMsg.id
-          ? { ...m, isProcessingPhoto: false, photoText: data.extractedText, translatedPhotoText: data.noText ? undefined : data.translatedText, otherLangPhotoText: data.noText ? undefined : data.otherLangText }
-          : m
-        ));
-      } catch {
-        setMessages(prev => prev.map(m => m.id === photoMsg.id ? { ...m, isProcessingPhoto: false } : m));
-      }
     };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
 
-  // Voice recording
+  // Voice recording using Web Speech API for transcription
   const startRecording = async () => {
     try {
+      // Start audio recording
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       mediaRecorder.start();
+
+      // Start speech recognition
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = false;
+        recognition.lang = preferredLang === "en" ? "vi-VN" : "en-US";
+        recognitionRef.current = recognition;
+        recognition.start();
+      }
+
       setIsRecording(true);
     } catch {
       alert("Microphone access denied.");
@@ -148,8 +144,17 @@ export default function ChatWindow() {
   };
 
   const stopRecording = async () => {
-    if (!mediaRecorderRef.current) return;
+    if (!mediaRecorderRef.current || !isRecording) return;
     setIsRecording(false);
+
+    // Stop speech recognition and get transcript
+    let transcript = "";
+    if (recognitionRef.current) {
+      recognitionRef.current.onresult = (e) => {
+        transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
+      };
+      recognitionRef.current.stop();
+    }
 
     mediaRecorderRef.current.stop();
     mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
@@ -158,37 +163,38 @@ export default function ChatWindow() {
       const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
       const audioUrl = URL.createObjectURL(audioBlob);
 
+      // Wait a moment for speech recognition result
+      await new Promise(r => setTimeout(r, 500));
+
+      const voiceMsgId = generateId();
       const voiceMsg: Message = {
-        id: generateId(), text: "", sender: "me",
-        timestamp: new Date(), audioUrl, isTranscribing: true,
+        id: voiceMsgId, text: "", sender: "me",
+        timestamp: new Date(), audioUrl,
+        transcribedText: transcript || "(No speech detected)",
+        isTranscribing: !!transcript,
       };
+
       setMessages(prev => [...prev, voiceMsg]);
 
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const base64 = (ev.target?.result as string).split(",")[1];
+      if (transcript) {
+        // Translate the transcript
         try {
           const res = await fetch("/api/transcribe", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ audioBase64: base64, mimeType: "audio/webm", targetLang: preferredLang }),
+            body: JSON.stringify({ transcribedText: transcript, targetLang: preferredLang }),
           });
           const data = await res.json();
-          setMessages(prev => prev.map(m => m.id === voiceMsg.id
-            ? { ...m, isTranscribing: false, transcribedText: data.transcribedText, translatedAudioText: data.translatedText }
+          setMessages(prev => prev.map(m => m.id === voiceMsgId
+            ? { ...m, isTranscribing: false, translatedAudioText: data.translatedText }
             : m
           ));
-          // Add to chat history and get reply
-          if (data.transcribedText) {
-            chatHistoryRef.current = [...chatHistoryRef.current, { role: "user", content: data.transcribedText }];
-            await getMinhAnhReply(preferredLang);
-          }
+          chatHistoryRef.current = [...chatHistoryRef.current, { role: "user", content: transcript }];
+          await getMinhAnhReply(preferredLang);
         } catch {
-          setMessages(prev => prev.map(m => m.id === voiceMsg.id ? { ...m, isTranscribing: false } : m));
+          setMessages(prev => prev.map(m => m.id === voiceMsgId ? { ...m, isTranscribing: false } : m));
         }
-      };
-      reader.readAsDataURL(audioBlob);
+      }
     };
   };
 
@@ -259,19 +265,15 @@ export default function ChatWindow() {
       {/* Input bar */}
       <div className="px-3 py-3 flex items-center gap-2 border-t"
         style={{ background: "white", borderColor: "#f0d9c8" }}>
-        {/* Photo upload */}
         <button onClick={() => fileInputRef.current?.click()}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-colors flex-shrink-0"
-          style={{ background: "#fff3ec" }}
-          onMouseEnter={e => (e.currentTarget.style.background = "#fde8d8")}
-          onMouseLeave={e => (e.currentTarget.style.background = "#fff3ec")}>
+          style={{ background: "#fff3ec" }}>
           <svg className="w-5 h-5" style={{ color: "#c8502a" }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
           </svg>
         </button>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
 
-        {/* Text input */}
         <div className="flex-1 flex items-center rounded-full px-4 py-2 gap-2 border transition-colors"
           style={{ background: "#fff8f3", borderColor: "#f0d9c8" }}>
           <input type="text" value={inputText}
@@ -286,9 +288,9 @@ export default function ChatWindow() {
         <button
           onMouseDown={startRecording}
           onMouseUp={stopRecording}
-          onTouchStart={startRecording}
-          onTouchEnd={stopRecording}
-          className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 shadow-sm active:scale-95"
+          onTouchStart={e => { e.preventDefault(); startRecording(); }}
+          onTouchEnd={e => { e.preventDefault(); stopRecording(); }}
+          className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 shadow-sm"
           style={{ background: isRecording ? "#8b2500" : "#fff3ec" }}
           title="Hold to record">
           <svg className="w-5 h-5" style={{ color: isRecording ? "white" : "#c8502a" }} fill="currentColor" viewBox="0 0 24 24">
@@ -299,7 +301,6 @@ export default function ChatWindow() {
           </svg>
         </button>
 
-        {/* Send button */}
         <button onClick={sendMessage} disabled={!inputText.trim() || isTyping}
           className="w-11 h-11 rounded-full flex items-center justify-center shadow-md transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: "linear-gradient(135deg, #c8502a, #e8733a)" }}>

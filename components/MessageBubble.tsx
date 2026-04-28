@@ -22,8 +22,6 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
 
   const meBubble = "linear-gradient(135deg, #c8502a 0%, #e8733a 100%)";
   const friendBubble = "#fff8f3";
-  const meText = "#ffffff";
-  const friendText = "#2d1a0e";
 
   const toggleAudio = () => {
     if (!audioRef.current) return;
@@ -32,24 +30,17 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
   };
 
   const handleTranslatePhoto = async () => {
-    if (photoTranslation || !message.photoUrl) return;
+    if (photoTranslation || translating || !message.photoUrl) return;
     setTranslating(true);
     try {
-      const res = await fetch(message.photoUrl);
-      const blob = await res.blob();
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => resolve((e.target?.result as string).split(",")[1]);
-        reader.readAsDataURL(blob);
-      });
-
+      // Convert dataUrl to base64
+      const base64 = message.photoUrl.split(",")[1];
       const apiRes = await fetch("/api/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: base64, targetLang: preferredLang }),
       });
       const data = await apiRes.json();
-
       if (data.noText) {
         setPhotoTranslation({ extracted: "", translated: "No text found in photo", other: "" });
       } else {
@@ -66,85 +57,82 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
     }
   };
 
-  const handleZoomIn = () => setZoom(z => Math.min(z + 0.5, 4));
-  const handleZoomOut = () => setZoom(z => Math.max(z - 0.5, 0.5));
-  const handleResetZoom = () => setZoom(1);
-
   return (
     <>
       {/* Lightbox */}
       {lightboxOpen && message.photoUrl && (
-        <div className="fixed inset-0 z-50 flex flex-col"
-          style={{ background: "rgba(0,0,0,0.95)" }}>
-          {/* Lightbox header */}
-          <div className="flex items-center justify-between px-4 py-3"
-            style={{ background: "rgba(0,0,0,0.5)" }}>
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0,0,0,0.95)" }}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0"
+            style={{ background: "rgba(0,0,0,0.6)" }}>
             <button onClick={() => { setLightboxOpen(false); setZoom(1); }}
-              className="text-white font-bold text-sm px-3 py-1 rounded-full"
+              className="text-white text-sm font-bold px-3 py-1 rounded-full"
               style={{ background: "rgba(255,255,255,0.15)" }}>
               ✕ Close
             </button>
+            {/* Zoom controls */}
             <div className="flex items-center gap-2">
-              <button onClick={handleZoomOut}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-lg"
+              <button onClick={() => setZoom(z => Math.max(z - 0.5, 0.5))}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold"
                 style={{ background: "rgba(255,255,255,0.15)" }}>−</button>
-              <span className="text-white text-xs font-medium w-12 text-center">{Math.round(zoom * 100)}%</span>
-              <button onClick={handleZoomIn}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-lg"
+              <span className="text-white text-xs w-12 text-center">{Math.round(zoom * 100)}%</span>
+              <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold"
                 style={{ background: "rgba(255,255,255,0.15)" }}>+</button>
-              <button onClick={handleResetZoom}
+              <button onClick={() => setZoom(1)}
                 className="text-white text-xs px-2 py-1 rounded-full"
                 style={{ background: "rgba(255,255,255,0.15)" }}>Reset</button>
             </div>
             {/* Translate button */}
             <button onClick={handleTranslatePhoto} disabled={translating}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold text-xs transition-all active:scale-95 disabled:opacity-60"
-              style={{ background: photoTranslation ? "#057642" : "#c8502a", color: "white" }}>
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold text-xs text-white transition-all active:scale-95 disabled:opacity-60"
+              style={{ background: photoTranslation ? "#057642" : "#c8502a" }}>
               {translating ? (
-                <>
-                  <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Translating...
-                </>
-              ) : photoTranslation ? "✅ Translated" : "🌐 Translate Text"}
+                <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Reading...</>
+              ) : photoTranslation ? "✅ Done" : "🌐 Translate"}
             </button>
           </div>
 
-          {/* Image area */}
-          <div className="flex-1 overflow-auto flex items-center justify-center p-4">
+          {/* Image */}
+          <div className="flex-1 overflow-auto flex items-center justify-center p-6">
             <img src={message.photoUrl} alt="full size"
               className="rounded-xl shadow-2xl transition-transform duration-200"
-              style={{ transform: `scale(${zoom})`, transformOrigin: "center", maxWidth: "90vw", maxHeight: "60vh", objectFit: "contain" }} />
+              style={{ transform: `scale(${zoom})`, transformOrigin: "center", maxWidth: "85vw", maxHeight: "55vh", objectFit: "contain" }} />
           </div>
 
           {/* Translation panel */}
           {photoTranslation && (
-            <div className="px-4 pb-4">
+            <div className="px-4 pb-6 flex-shrink-0">
               <div className="rounded-2xl p-4 space-y-2 max-w-lg mx-auto"
                 style={{ background: "#fff8f3", border: "1px solid #f0d9c8" }}>
                 <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#c8502a" }}>
-                  🌐 Text found in photo
+                  🌐 Text in photo
                 </p>
-                {photoTranslation.extracted && (
-                  <div>
-                    <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">Original</p>
-                    <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.extracted}</p>
-                  </div>
-                )}
-                {photoTranslation.translated && (
-                  <div className="pt-1 border-t" style={{ borderColor: "#f0d9c8" }}>
-                    <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">
-                      {preferredLang === "en" ? "English" : "Vietnamese"}
-                    </p>
-                    <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.translated}</p>
-                  </div>
-                )}
-                {photoTranslation.other && (
-                  <div className="pt-1 border-t" style={{ borderColor: "#f0d9c8" }}>
-                    <p className="text-[10px] text-gray-400 font-medium uppercase tracking-wide">
-                      {preferredLang === "en" ? "Vietnamese" : "English"}
-                    </p>
-                    <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.other}</p>
-                  </div>
+                {photoTranslation.extracted ? (
+                  <>
+                    <div>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Original</p>
+                      <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.extracted}</p>
+                    </div>
+                    {photoTranslation.translated && (
+                      <div className="pt-2 border-t" style={{ borderColor: "#f0d9c8" }}>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
+                          {preferredLang === "en" ? "English" : "Vietnamese"}
+                        </p>
+                        <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.translated}</p>
+                      </div>
+                    )}
+                    {photoTranslation.other && (
+                      <div className="pt-2 border-t" style={{ borderColor: "#f0d9c8" }}>
+                        <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
+                          {preferredLang === "en" ? "Vietnamese" : "English"}
+                        </p>
+                        <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.other}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-gray-500 italic">{photoTranslation.translated}</p>
                 )}
               </div>
             </div>
@@ -154,9 +142,9 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
 
       <div className={`flex ${isMe ? "justify-end" : "justify-start"} mb-2 px-3`}>
         {!isMe && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold mr-2 mt-1 flex-shrink-0 shadow-sm"
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold mr-2 mt-1 flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #c8502a, #e8733a)" }}>
-            A
+            {FRIEND_PROFILE_AVATAR}
           </div>
         )}
 
@@ -164,76 +152,65 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
           <div className="rounded-2xl shadow-sm overflow-hidden"
             style={{
               background: isMe ? meBubble : friendBubble,
-              color: isMe ? meText : friendText,
               borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
               border: isMe ? "none" : "1px solid #f0d9c8",
             }}>
 
-            {/* Photo message — clean, just the photo */}
+            {/* Photo */}
             {message.photoUrl && (
               <div>
-                <div className="relative cursor-pointer" onClick={() => setLightboxOpen(true)}>
+                <div className="relative cursor-pointer group" onClick={() => setLightboxOpen(true)}>
                   <img src={message.photoUrl} alt="uploaded"
-                    className="block w-56 h-44 object-cover hover:opacity-95 transition-opacity" />
-                  {/* Overlay hint */}
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+                    className="block w-56 h-44 object-cover" />
+                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ background: "rgba(0,0,0,0.3)" }}>
-                    <span className="text-white text-xs font-semibold bg-black/40 px-3 py-1.5 rounded-full">
-                      🔍 Tap to view
-                    </span>
+                    <span className="text-white text-xs font-semibold bg-black/50 px-3 py-1.5 rounded-full">🔍 View</span>
                   </div>
                 </div>
-                {/* Hint text */}
-                <div className="px-3 py-2 flex items-center gap-1.5"
+                <div className="px-3 py-1.5 flex items-center gap-1"
                   style={{ background: isMe ? "rgba(0,0,0,0.15)" : "#fff3ec" }}>
-                  <span className="text-sm">🌐</span>
+                  <span className="text-xs">🌐</span>
                   <p className="text-[11px] font-medium"
-                    style={{ color: isMe ? "rgba(255,255,255,0.8)" : "#8b4513" }}>
-                    Tap photo → 🌐 to translate text
+                    style={{ color: isMe ? "rgba(255,255,255,0.75)" : "#8b4513" }}>
+                    Tap photo → Translate to read text
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Voice message */}
+            {/* Voice message — clean */}
             {message.audioUrl && (
-              <div className="px-4 py-2.5 space-y-2">
-                <div className="flex items-center gap-2">
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex items-center gap-3">
                   <button onClick={toggleAudio}
-                    className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                     style={{ background: isMe ? "rgba(255,255,255,0.25)" : "#c8502a" }}>
-                    <span className="text-white text-xs">{playing ? "⏸" : "▶"}</span>
+                    <span className="text-white text-sm">{playing ? "⏸" : "▶"}</span>
                   </button>
-                  <div className="flex-1 flex items-center gap-0.5">
-                    {Array.from({ length: 20 }).map((_, i) => (
-                      <div key={i} className="rounded-full flex-1"
+                  <div className="flex-1 flex items-end gap-0.5 h-8">
+                    {Array.from({ length: 24 }).map((_, i) => (
+                      <div key={i} className="rounded-full flex-1 transition-all duration-100"
                         style={{
-                          height: `${6 + Math.sin(i * 0.8) * 8}px`,
-                          background: isMe ? "rgba(255,255,255,0.6)" : "#e8733a",
-                          opacity: playing ? 1 : 0.5,
+                          height: `${30 + Math.sin(i * 0.9) * 50}%`,
+                          background: isMe ? "rgba(255,255,255,0.7)" : "#e8733a",
+                          opacity: playing ? 1 : 0.4,
                         }} />
                     ))}
                   </div>
                   <audio ref={audioRef} src={message.audioUrl} onEnded={() => setPlaying(false)} className="hidden" />
                 </div>
+
+                {/* Only show transcription — no extra info */}
                 {message.isTranscribing && (
-                  <div className="flex items-center gap-1.5">
-                    {[0, 150, 300].map(d => (
-                      <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
-                        style={{ background: isMe ? "rgba(255,255,255,0.7)" : "#c8502a", animationDelay: `${d}ms` }} />
-                    ))}
-                    <span className="text-[10px] opacity-60">Transcribing...</span>
-                  </div>
+                  <p className="text-xs opacity-50 italic">Transcribing...</p>
                 )}
                 {message.transcribedText && !message.isTranscribing && (
-                  <div className="space-y-1 pt-1 border-t"
-                    style={{ borderColor: isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8" }}>
-                    <p className="text-xs font-medium">{message.transcribedText}</p>
+                  <div className="pt-2 border-t" style={{ borderColor: isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8" }}>
+                    <p className="text-xs leading-relaxed" style={{ color: isMe ? "white" : "#2d1a0e" }}>
+                      {message.transcribedText}
+                    </p>
                     {message.translatedAudioText && message.translatedAudioText !== message.transcribedText && (
-                      <div>
-                        <p className="text-[9px] font-bold uppercase tracking-wider opacity-60">🌐 {langLabel}</p>
-                        <p className="text-xs opacity-80 italic">{message.translatedAudioText}</p>
-                      </div>
+                      <p className="text-xs italic opacity-70 mt-1">🌐 {message.translatedAudioText}</p>
                     )}
                   </div>
                 )}
@@ -243,24 +220,24 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
             {/* Regular text */}
             {!message.photoUrl && !message.audioUrl && (
               <div className="px-4 py-2.5">
-                <p className="text-sm leading-relaxed">
+                <p className="text-sm leading-relaxed" style={{ color: isMe ? "white" : "#2d1a0e" }}>
                   {message.showOriginal ? message.text : (message.translatedText || message.text)}
                 </p>
                 {message.isTranslating && (
-                  <div className="flex items-center gap-1.5 mt-1.5 pt-1.5"
+                  <div className="flex items-center gap-1 mt-1.5 pt-1.5"
                     style={{ borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
                     {[0, 150, 300].map(d => (
                       <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
                         style={{ background: isMe ? "rgba(255,255,255,0.7)" : "#c8502a", animationDelay: `${d}ms` }} />
                     ))}
-                    <span className="text-[10px] opacity-60">Translating...</span>
+                    <span className="text-[10px] opacity-50 ml-1">Translating...</span>
                   </div>
                 )}
                 {message.translatedText && !message.isTranslating && (
                   <div className="mt-1.5 pt-1.5"
                     style={{ borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
-                    <p className="text-[9px] font-bold uppercase tracking-wider opacity-60">🌐 from {langLabel}</p>
-                    <p className="text-[11px] opacity-60 italic mt-0.5">"{message.text}"</p>
+                    <p className="text-[9px] font-bold uppercase tracking-wider opacity-50">🌐 from {langLabel}</p>
+                    <p className="text-[11px] opacity-55 italic mt-0.5">"{message.text}"</p>
                   </div>
                 )}
               </div>
@@ -280,7 +257,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
         </div>
 
         {isMe && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ml-2 mt-1 flex-shrink-0 shadow-sm"
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ml-2 mt-1 flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #8b4513, #c8502a)" }}>
             U
           </div>
@@ -289,3 +266,5 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
     </>
   );
 }
+
+const FRIEND_PROFILE_AVATAR = "A";

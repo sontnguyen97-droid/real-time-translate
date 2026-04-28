@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const systemPrompt = `You are Thỏ Ngọc, a friendly and warm Vietnamese person chatting with your close friend. You are from Sai Gon, Vietnam.
+    const systemPrompt = `You are Minh Anh, a friendly and warm Vietnamese person chatting with your close friend. You are from Sai Gon, Vietnam.
 
 IMPORTANT RULES:
 - You MUST reply ONLY in ${replyLangName}
