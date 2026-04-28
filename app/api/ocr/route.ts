@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
             content: [
               {
                 type: "image",
-                source: { type: "base64", media_type: "image/jpeg", data: imageBase64 },
+                source: { type: "base64", media_type: (imageBase64.startsWith("/9j") ? "image/jpeg" : imageBase64.startsWith("iVBOR") ? "image/png" : "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: imageBase64 },
               },
               {
                 type: "text",
@@ -65,6 +65,7 @@ If no text found, return: []`,
     });
 
     const data = await res.json();
+    console.log("Claude response:", JSON.stringify(data).substring(0, 200));
     const raw = data.content?.[0]?.text?.trim() ?? "[]";
     const clean = raw.replace(/```json|```/g, "").trim();
 
