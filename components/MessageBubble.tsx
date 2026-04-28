@@ -16,7 +16,11 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [translating, setTranslating] = useState(false);
-  const [photoTranslation, setPhotoTranslation] = useState<{ extracted: string; translated: string; other: string } | null>(null);
+  const [showOriginalText, setShowOriginalText] = useState(false);
+  const [photoTranslation, setPhotoTranslation] = useState<{
+    extracted: string;
+    translated: string;
+  } | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [playing, setPlaying] = useState(false);
 
@@ -30,10 +34,14 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
   };
 
   const handleTranslatePhoto = async () => {
-    if (photoTranslation || translating || !message.photoUrl) return;
+    if (translating || !message.photoUrl) return;
+    if (photoTranslation) {
+      // Already translated — just toggle
+      setShowOriginalText(p => !p);
+      return;
+    }
     setTranslating(true);
     try {
-      // Convert dataUrl to base64
       const base64 = message.photoUrl.split(",")[1];
       const apiRes = await fetch("/api/ocr", {
         method: "POST",
@@ -42,16 +50,16 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
       });
       const data = await apiRes.json();
       if (data.noText) {
-        setPhotoTranslation({ extracted: "", translated: "No text found in photo", other: "" });
+        setPhotoTranslation({ extracted: "", translated: "No text found" });
       } else {
         setPhotoTranslation({
           extracted: data.extractedText ?? "",
           translated: data.translatedText ?? "",
-          other: data.otherLangText ?? "",
         });
       }
+      setShowOriginalText(false);
     } catch {
-      setPhotoTranslation({ extracted: "", translated: "Translation failed", other: "" });
+      setPhotoTranslation({ extracted: "", translated: "Translation failed" });
     } finally {
       setTranslating(false);
     }
@@ -61,80 +69,79 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
     <>
       {/* Lightbox */}
       {lightboxOpen && message.photoUrl && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0,0,0,0.95)" }}>
-          {/* Header */}
+        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0,0,0,0.97)" }}>
+          {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-            style={{ background: "rgba(0,0,0,0.6)" }}>
+            style={{ background: "rgba(0,0,0,0.7)" }}>
             <button onClick={() => { setLightboxOpen(false); setZoom(1); }}
-              className="text-white text-sm font-bold px-3 py-1 rounded-full"
+              className="text-white text-sm font-bold px-3 py-1.5 rounded-full"
               style={{ background: "rgba(255,255,255,0.15)" }}>
-              ✕ Close
+              ✕
             </button>
+
             {/* Zoom controls */}
             <div className="flex items-center gap-2">
               <button onClick={() => setZoom(z => Math.max(z - 0.5, 0.5))}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-lg"
                 style={{ background: "rgba(255,255,255,0.15)" }}>−</button>
-              <span className="text-white text-xs w-12 text-center">{Math.round(zoom * 100)}%</span>
+              <span className="text-white text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
               <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-lg"
                 style={{ background: "rgba(255,255,255,0.15)" }}>+</button>
-              <button onClick={() => setZoom(1)}
-                className="text-white text-xs px-2 py-1 rounded-full"
-                style={{ background: "rgba(255,255,255,0.15)" }}>Reset</button>
             </div>
+
             {/* Translate button */}
             <button onClick={handleTranslatePhoto} disabled={translating}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold text-xs text-white transition-all active:scale-95 disabled:opacity-60"
-              style={{ background: photoTranslation ? "#057642" : "#c8502a" }}>
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold text-xs text-white transition-all active:scale-95"
+              style={{ background: photoTranslation ? "#057642" : "#c8502a", minWidth: 90, justifyContent: "center" }}>
               {translating ? (
-                <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Reading...</>
-              ) : photoTranslation ? "✅ Done" : "🌐 Translate"}
+                <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Reading</>
+              ) : photoTranslation ? "🌐 Translated" : "🌐 Translate"}
             </button>
           </div>
 
-          {/* Image */}
-          <div className="flex-1 overflow-auto flex items-center justify-center p-6">
-            <img src={message.photoUrl} alt="full size"
-              className="rounded-xl shadow-2xl transition-transform duration-200"
-              style={{ transform: `scale(${zoom})`, transformOrigin: "center", maxWidth: "85vw", maxHeight: "55vh", objectFit: "contain" }} />
+          {/* Image area with overlay */}
+          <div className="flex-1 overflow-auto flex items-center justify-center p-4 relative">
+            <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: "center", transition: "transform 0.2s" }}>
+              <img src={message.photoUrl} alt="full size"
+                className="rounded-xl shadow-2xl block"
+                style={{ maxWidth: "85vw", maxHeight: "65vh", objectFit: "contain" }} />
+
+              {/* Text overlay ON the photo */}
+              {photoTranslation && photoTranslation.extracted && (
+                <div className="absolute inset-0 flex items-end justify-center pb-3 px-3">
+                  <div className="w-full rounded-xl px-3 py-2"
+                    style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
+                    <p className="text-white text-sm font-medium leading-relaxed text-center">
+                      {showOriginalText ? photoTranslation.extracted : photoTranslation.translated}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* No text found */}
+              {photoTranslation && !photoTranslation.extracted && (
+                <div className="absolute inset-0 flex items-end justify-center pb-3 px-3">
+                  <div className="rounded-xl px-3 py-2" style={{ background: "rgba(0,0,0,0.7)" }}>
+                    <p className="text-white text-xs italic">{photoTranslation.translated}</p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Translation panel */}
-          {photoTranslation && (
-            <div className="px-4 pb-6 flex-shrink-0">
-              <div className="rounded-2xl p-4 space-y-2 max-w-lg mx-auto"
-                style={{ background: "#fff8f3", border: "1px solid #f0d9c8" }}>
-                <p className="text-xs font-bold uppercase tracking-wider" style={{ color: "#c8502a" }}>
-                  🌐 Text in photo
-                </p>
-                {photoTranslation.extracted ? (
-                  <>
-                    <div>
-                      <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">Original</p>
-                      <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.extracted}</p>
-                    </div>
-                    {photoTranslation.translated && (
-                      <div className="pt-2 border-t" style={{ borderColor: "#f0d9c8" }}>
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
-                          {preferredLang === "en" ? "English" : "Vietnamese"}
-                        </p>
-                        <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.translated}</p>
-                      </div>
-                    )}
-                    {photoTranslation.other && (
-                      <div className="pt-2 border-t" style={{ borderColor: "#f0d9c8" }}>
-                        <p className="text-[10px] text-gray-400 uppercase tracking-wide font-medium">
-                          {preferredLang === "en" ? "Vietnamese" : "English"}
-                        </p>
-                        <p className="text-sm font-semibold" style={{ color: "#2d1a0e" }}>{photoTranslation.other}</p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-gray-500 italic">{photoTranslation.translated}</p>
-                )}
-              </div>
+          {/* Bottom toggle bar — only show if translated */}
+          {photoTranslation && photoTranslation.extracted && (
+            <div className="flex-shrink-0 flex items-center justify-center gap-3 px-4 py-3"
+              style={{ background: "rgba(0,0,0,0.7)" }}>
+              <p className="text-white text-xs opacity-60">
+                {showOriginalText ? "Showing original text" : `Showing ${preferredLang === "en" ? "English" : "Vietnamese"} translation`}
+              </p>
+              <button onClick={() => setShowOriginalText(p => !p)}
+                className="px-4 py-1.5 rounded-full text-xs font-bold text-white transition-all active:scale-95"
+                style={{ background: "#c8502a" }}>
+                {showOriginalText ? "Show Translation" : "Show Original"}
+              </button>
             </div>
           )}
         </div>
@@ -144,7 +151,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
         {!isMe && (
           <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold mr-2 mt-1 flex-shrink-0"
             style={{ background: "linear-gradient(135deg, #c8502a, #e8733a)" }}>
-            {FRIEND_PROFILE_AVATAR}
+            TN
           </div>
         )}
 
@@ -160,8 +167,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
             {message.photoUrl && (
               <div>
                 <div className="relative cursor-pointer group" onClick={() => setLightboxOpen(true)}>
-                  <img src={message.photoUrl} alt="uploaded"
-                    className="block w-56 h-44 object-cover" />
+                  <img src={message.photoUrl} alt="uploaded" className="block w-56 h-44 object-cover" />
                   <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ background: "rgba(0,0,0,0.3)" }}>
                     <span className="text-white text-xs font-semibold bg-black/50 px-3 py-1.5 rounded-full">🔍 View</span>
@@ -172,13 +178,13 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
                   <span className="text-xs">🌐</span>
                   <p className="text-[11px] font-medium"
                     style={{ color: isMe ? "rgba(255,255,255,0.75)" : "#8b4513" }}>
-                    Tap photo → Translate to read text
+                    Tap photo → Translate text
                   </p>
                 </div>
               </div>
             )}
 
-            {/* Voice message — clean */}
+            {/* Voice message */}
             {message.audioUrl && (
               <div className="px-4 py-3 space-y-2">
                 <div className="flex items-center gap-3">
@@ -189,7 +195,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
                   </button>
                   <div className="flex-1 flex items-end gap-0.5 h-8">
                     {Array.from({ length: 24 }).map((_, i) => (
-                      <div key={i} className="rounded-full flex-1 transition-all duration-100"
+                      <div key={i} className="rounded-full flex-1"
                         style={{
                           height: `${30 + Math.sin(i * 0.9) * 50}%`,
                           background: isMe ? "rgba(255,255,255,0.7)" : "#e8733a",
@@ -199,8 +205,6 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
                   </div>
                   <audio ref={audioRef} src={message.audioUrl} onEnded={() => setPlaying(false)} className="hidden" />
                 </div>
-
-                {/* Only show transcription — no extra info */}
                 {message.isTranscribing && (
                   <p className="text-xs opacity-50 italic">Transcribing...</p>
                 )}
@@ -244,7 +248,6 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
             )}
           </div>
 
-          {/* Time + toggle */}
           <div className={`flex items-center gap-2 mt-1 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
             <span className="text-[10px] text-gray-400">{time}</span>
             {!message.photoUrl && !message.audioUrl && message.translatedText && !message.isTranslating && (
@@ -266,5 +269,3 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
     </>
   );
 }
-
-const FRIEND_PROFILE_AVATAR = "A";
