@@ -4,16 +4,15 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Message, Language, FRIEND_PROFILE } from "@/lib/types";
 import MessageBubble from "./MessageBubble";
 
-// Fix TypeScript errors for Web Speech API
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
-}
-
 let msgCounter = 0;
 function generateId() { return `msg-${Date.now()}-${msgCounter++}`; }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getSpeechRecognition = (): any => {
+  if (typeof window === "undefined") return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition || null;
+};
 
 export default function ChatWindow() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -24,10 +23,8 @@ export default function ChatWindow() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const chatHistoryRef = useRef<{ role: string; content: string }[]>([]);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
-  const transcriptRef = useRef<string>("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   const scrollToBottom = () => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -124,82 +121,63 @@ export default function ChatWindow() {
     e.target.value = "";
   };
 
-  const startRecording = async () => {
-    try {
-      transcriptRef.current = "";
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
-      mediaRecorder.start();
-
-      const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognitionAPI) {
-        const recognition = new SpeechRecognitionAPI();
-        recognition.continuous = true;
-        recognition.interimResults = false;
-        recognition.lang = preferredLang === "en" ? "vi-VN" : "en-US";
-        recognition.onresult = (e: SpeechRecognitionEvent) => {
-          transcriptRef.current = Array.from(e.results).map(r => r[0].transcript).join(" ");
-        };
-        recognitionRef.current = recognition;
-        recognition.start();
-      }
-
-      setIsRecording(true);
-    } catch {
-      alert("Microphone access denied.");
-    }
-  };
-
-  const stopRecording = async () => {
-    if (!mediaRecorderRef.current || !isRecording) return;
-    setIsRecording(false);
-
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
+  const startRecording = () => {
+    const SpeechRecognitionAPI = getSpeechRecognition();
+    if (!SpeechRecognitionAPI) {
+      alert("Voice recording is not supported in this browser. Please use Chrome.");
+      return;
     }
 
-    mediaRecorderRef.current.stop();
-    mediaRecorderRef.current.stream.getTracks().forEach(t => t.stop());
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = preferredLang === "en" ? "vi-VN" : "en-US";
 
-    mediaRecorderRef.current.onstop = async () => {
-      const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-      const audioUrl = URL.createObjectURL(audioBlob);
-
-      await new Promise(r => setTimeout(r, 600));
-      const transcript = transcriptRef.current;
+    recognition.onresult = async (e: { results: { [x: number]: { [x: number]: { transcript: string; }; }; }; }) => {
+      const transcript = e.results[0][0].transcript;
+      if (!transcript) return;
 
       const voiceMsgId = generateId();
       const voiceMsg: Message = {
-        id: voiceMsgId, text: "", sender: "me",
-        timestamp: new Date(), audioUrl,
-        transcribedText: transcript || "(No speech detected)",
-        isTranscribing: !!transcript,
+        id: voiceMsgId, text: transcript, sender: "me",
+        timestamp: new Date(),
+        transcribedText: transcript,
+        isTranscribing: true,
       };
-
       setMessages(prev => [...prev, voiceMsg]);
+      setIsRecording(false);
 
-      if (transcript) {
-        try {
-          const res = await fetch("/api/transcribe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ transcribedText: transcript, targetLang: preferredLang }),
-          });
-          const data = await res.json();
-          setMessages(prev => prev.map(m => m.id === voiceMsgId
-            ? { ...m, isTranscribing: false, translatedAudioText: data.translatedText }
-            : m
-          ));
-          chatHistoryRef.current = [...chatHistoryRef.current, { role: "user", content: transcript }];
-          await getMinhAnhReply(preferredLang);
-        } catch {
-          setMessages(prev => prev.map(m => m.id === voiceMsgId ? { ...m, isTranscribing: false } : m));
-        }
+      try {
+        const res = await fetch("/api/transcribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ transcribedText: transcript, targetLang: preferredLang }),
+        });
+        const data = await res.json();
+        setMessages(prev => prev.map(m => m.id === voiceMsgId
+          ? { ...m, isTranscribing: false, translatedAudioText: data.translatedText }
+          : m
+        ));
+        chatHistoryRef.current = [...chatHistoryRef.current, { role: "user", content: transcript }];
+        await getMinhAnhReply(preferredLang);
+      } catch {
+        setMessages(prev => prev.map(m => m.id === voiceMsgId ? { ...m, isTranscribing: false } : m));
       }
     };
+
+    recognition.onerror = () => { setIsRecording(false); };
+    recognition.onend = () => { setIsRecording(false); };
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setIsRecording(true);
+  };
+
+  const stopRecording = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
+    setIsRecording(false);
   };
 
   const toggleLang = () => setPreferredLang(prev => prev === "en" ? "vi" : "en");
@@ -288,20 +266,22 @@ export default function ChatWindow() {
             style={{ color: "#2d1a0e" }} />
         </div>
 
+        {/* Voice button - click to start, click again to stop */}
         <button
-          onMouseDown={startRecording}
-          onMouseUp={stopRecording}
-          onTouchStart={e => { e.preventDefault(); startRecording(); }}
-          onTouchEnd={e => { e.preventDefault(); stopRecording(); }}
+          onClick={isRecording ? stopRecording : startRecording}
           className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0 shadow-sm"
           style={{ background: isRecording ? "#8b2500" : "#fff3ec" }}
-          title="Hold to record">
-          <svg className="w-5 h-5" style={{ color: isRecording ? "white" : "#c8502a" }} fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
-            <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-            <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-          </svg>
+          title={isRecording ? "Click to stop" : "Click to record"}>
+          {isRecording ? (
+            <span className="w-3 h-3 rounded-sm" style={{ background: "white" }} />
+          ) : (
+            <svg className="w-5 h-5" style={{ color: "#c8502a" }} fill="currentColor" viewBox="0 0 24 24">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none"/>
+              <line x1="12" y1="19" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+              <line x1="8" y1="23" x2="16" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
+          )}
         </button>
 
         <button onClick={sendMessage} disabled={!inputText.trim() || isTyping}
@@ -313,11 +293,12 @@ export default function ChatWindow() {
         </button>
       </div>
 
+      {/* Recording indicator */}
       {isRecording && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-50"
           style={{ background: "#8b2500", color: "white" }}>
           <span className="w-2 h-2 bg-red-300 rounded-full animate-pulse" />
-          <span className="text-sm font-medium">Recording... release to send</span>
+          <span className="text-sm font-medium">Listening... click 🟥 to stop</span>
         </div>
       )}
     </div>
