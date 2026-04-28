@@ -14,9 +14,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ noText: true, isMock: true });
   }
 
+  const mediaType = imageBase64.startsWith("/9j") ? "image/jpeg"
+    : imageBase64.startsWith("iVBOR") ? "image/png"
+    : imageBase64.startsWith("R0lGOD") ? "image/gif"
+    : imageBase64.startsWith("UklGR") ? "image/webp"
+    : "image/jpeg";
+
   try {
-    console.log("Base64 length:", imageBase64?.length);
-    console.log("First 50 chars:", imageBase64?.substring(0, 50));
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -26,37 +30,36 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: "claude-opus-4-5",
-        max_tokens: 2048,
+        max_tokens: 4096,
         messages: [
           {
             role: "user",
             content: [
               {
                 type: "image",
-                source: { type: "base64", media_type: (imageBase64.startsWith("/9j") ? "image/jpeg" : imageBase64.startsWith("iVBOR") ? "image/png" : "image/jpeg") as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: imageBase64 },
+                source: {
+                  type: "base64",
+                  media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+                  data: imageBase64,
+                },
               },
               {
                 type: "text",
-                text: `Analyze this image and find all text. For each distinct text block, estimate its position as a percentage of the image dimensions (0-100).
+                text: `Look at this image. Find ALL visible text and return their positions.
 
-Return a JSON array only — no markdown, no explanation:
-[
-  {
-    "original": "exact text as it appears",
-    "translated": "translation in ${targetLangName}",
-    "x": 50,
-    "y": 20,
-    "width": 40,
-    "fontSize": "large"
-  }
-]
+IMPORTANT: Return ONLY a valid JSON array. No markdown, no explanation, no code fences.
+Limit to the 15 most important text blocks only.
 
-Where:
-- x, y = center position as % of image width/height
-- width = approximate width as % of image width  
-- fontSize = "small", "medium", or "large" based on text size in image
+Format:
+[{"original":"text here","translated":"${targetLangName} translation","x":50,"y":30,"width":40,"fontSize":"medium"}]
 
-If no text found, return: []`,
+Rules:
+- x,y = center position as % of image (0-100)
+- width = text block width as % of image width
+- fontSize = "small", "medium", or "large"
+- If NO text exists: []
+- Translate to ${targetLangName}
+- Keep numbers/prices/names unchanged if not translatable`,
               },
             ],
           },
@@ -65,30 +68,75 @@ If no text found, return: []`,
     });
 
     const data = await res.json();
-    console.log("Claude full response:", JSON.stringify(data));
-    console.log("Claude status:", res.status);
-    console.log("Claude response:", JSON.stringify(data).substring(0, 200));
-    const raw = data.content?.[0]?.text?.trim() ?? "[]";
-    console.log("Raw response:", raw);
+    const raw = data.content?.[0]?.text?.trim() ?? "";
 
-      // Extract JSON array from response
-    const match = raw.match(/\[[\s\S]*\]/);
-    if (!match) {
-      console.log("No JSON array found");
+    if (!raw) {
       return NextResponse.json({ noText: true });
     }
 
+    // Try multiple parsing strategies
+    let blocks = null;
+
+    // Strategy 1: Direct parse
     try {
-      const blocks = JSON.parse(match[0]);
-      console.log("Parsed blocks:", blocks.length);
-      if (!Array.isArray(blocks) || blocks.length === 0) {
-        return NextResponse.json({ noText: true });
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) blocks = parsed;
+    } catch { /* try next */ }
+
+    // Strategy 2: Extract array with regex
+    if (!blocks) {
+      const match = raw.match(/\[[\s\S]*?\]/);
+      if (match) {
+        try {
+          blocks = JSON.parse(match[0]);
+        } catch { /* try next */ }
       }
-      return NextResponse.json({ blocks, isMock: false });
-    } catch (e) {
-      console.log("Parse error:", e);
+    }
+
+    // Strategy 3: Find first [ and try to parse, fixing truncation
+    if (!blocks) {
+      const start = raw.indexOf("[");
+      if (start !== -1) {
+        let jsonStr = raw.substring(start);
+        // Remove markdown fences if present
+        jsonStr = jsonStr.replace(/```[\s\S]*$/, "").trim();
+        // Fix truncated JSON - find last complete object
+        const lastClosing = jsonStr.lastIndexOf("}");
+        if (lastClosing !== -1) {
+          jsonStr = jsonStr.substring(0, lastClosing + 1) + "]";
+        }
+        try {
+          blocks = JSON.parse(jsonStr);
+        } catch { /* failed */ }
+      }
+    }
+
+    if (!blocks || !Array.isArray(blocks) || blocks.length === 0) {
       return NextResponse.json({ noText: true });
     }
+
+    // Validate and clean blocks
+    const validBlocks = blocks
+      .filter((b: { original?: unknown; translated?: unknown; x?: unknown; y?: unknown; width?: unknown }) =>
+        b && typeof b.original === "string" && typeof b.translated === "string" &&
+        typeof b.x === "number" && typeof b.y === "number"
+      )
+      .slice(0, 15) // max 15 blocks
+      .map((b: { original: string; translated: string; x: number; y: number; width?: number; fontSize?: string }) => ({
+        original: b.original,
+        translated: b.translated,
+        x: Math.max(0, Math.min(100, b.x)),
+        y: Math.max(0, Math.min(100, b.y)),
+        width: Math.max(5, Math.min(100, b.width ?? 30)),
+        fontSize: ["small", "medium", "large"].includes(b.fontSize ?? "") ? b.fontSize : "medium",
+      }));
+
+    if (validBlocks.length === 0) {
+      return NextResponse.json({ noText: true });
+    }
+
+    return NextResponse.json({ blocks: validBlocks, isMock: false });
+
   } catch (err) {
     console.log("OCR error:", err);
     return NextResponse.json({ error: "OCR failed" }, { status: 500 });
