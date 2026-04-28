@@ -4,6 +4,14 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { Message, Language, FRIEND_PROFILE } from "@/lib/types";
 import MessageBubble from "./MessageBubble";
 
+// Fix TypeScript errors for Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
 let msgCounter = 0;
 function generateId() { return `msg-${Date.now()}-${msgCounter++}`; }
 
@@ -19,6 +27,7 @@ export default function ChatWindow() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const transcriptRef = useRef<string>("");
 
   const scrollToBottom = () => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
@@ -115,10 +124,9 @@ export default function ChatWindow() {
     e.target.value = "";
   };
 
-  // Voice recording using Web Speech API for transcription
   const startRecording = async () => {
     try {
-      // Start audio recording
+      transcriptRef.current = "";
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
@@ -126,13 +134,15 @@ export default function ChatWindow() {
       mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       mediaRecorder.start();
 
-      // Start speech recognition
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        const recognition = new SpeechRecognition();
+      const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognitionAPI) {
+        const recognition = new SpeechRecognitionAPI();
         recognition.continuous = true;
         recognition.interimResults = false;
         recognition.lang = preferredLang === "en" ? "vi-VN" : "en-US";
+        recognition.onresult = (e: SpeechRecognitionEvent) => {
+          transcriptRef.current = Array.from(e.results).map(r => r[0].transcript).join(" ");
+        };
         recognitionRef.current = recognition;
         recognition.start();
       }
@@ -147,12 +157,7 @@ export default function ChatWindow() {
     if (!mediaRecorderRef.current || !isRecording) return;
     setIsRecording(false);
 
-    // Stop speech recognition and get transcript
-    let transcript = "";
     if (recognitionRef.current) {
-      recognitionRef.current.onresult = (e) => {
-        transcript = Array.from(e.results).map(r => r[0].transcript).join(" ");
-      };
       recognitionRef.current.stop();
     }
 
@@ -163,8 +168,8 @@ export default function ChatWindow() {
       const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
       const audioUrl = URL.createObjectURL(audioBlob);
 
-      // Wait a moment for speech recognition result
-      await new Promise(r => setTimeout(r, 500));
+      await new Promise(r => setTimeout(r, 600));
+      const transcript = transcriptRef.current;
 
       const voiceMsgId = generateId();
       const voiceMsg: Message = {
@@ -177,7 +182,6 @@ export default function ChatWindow() {
       setMessages(prev => [...prev, voiceMsg]);
 
       if (transcript) {
-        // Translate the transcript
         try {
           const res = await fetch("/api/transcribe", {
             method: "POST",
@@ -274,7 +278,7 @@ export default function ChatWindow() {
         </button>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="hidden" />
 
-        <div className="flex-1 flex items-center rounded-full px-4 py-2 gap-2 border transition-colors"
+        <div className="flex-1 flex items-center rounded-full px-4 py-2 gap-2 border"
           style={{ background: "#fff8f3", borderColor: "#f0d9c8" }}>
           <input type="text" value={inputText}
             onChange={e => setInputText(e.target.value)}
@@ -284,7 +288,6 @@ export default function ChatWindow() {
             style={{ color: "#2d1a0e" }} />
         </div>
 
-        {/* Voice button */}
         <button
           onMouseDown={startRecording}
           onMouseUp={stopRecording}
@@ -310,7 +313,6 @@ export default function ChatWindow() {
         </button>
       </div>
 
-      {/* Recording indicator */}
       {isRecording && (
         <div className="fixed bottom-20 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full shadow-lg flex items-center gap-2 z-50"
           style={{ background: "#8b2500", color: "white" }}>
