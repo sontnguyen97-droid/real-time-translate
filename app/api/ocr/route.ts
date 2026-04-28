@@ -69,18 +69,24 @@ If no text found, return: []`,
     console.log("Claude status:", res.status);
     console.log("Claude response:", JSON.stringify(data).substring(0, 200));
     const raw = data.content?.[0]?.text?.trim() ?? "[]";
-    const clean = raw
-      .replace(/```json\n?/gi, "")
-      .replace(/```\n?/g, "")
-      .trim();
+    console.log("Raw response:", raw);
+
+      // Extract JSON array from response
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (!match) {
+      console.log("No JSON array found");
+      return NextResponse.json({ noText: true });
+    }
 
     try {
-      const blocks = JSON.parse(clean);
+      const blocks = JSON.parse(match[0]);
+      console.log("Parsed blocks:", blocks.length);
       if (!Array.isArray(blocks) || blocks.length === 0) {
         return NextResponse.json({ noText: true });
       }
       return NextResponse.json({ blocks, isMock: false });
-    } catch {
+    } catch (e) {
+      console.log("Parse error:", e);
       return NextResponse.json({ noText: true });
     }
   } catch (err) {
