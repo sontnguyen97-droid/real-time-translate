@@ -36,7 +36,6 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
   const handleTranslatePhoto = async () => {
     if (translating || !message.photoUrl) return;
     if (photoTranslation) {
-      // Already translated — just toggle
       setShowOriginalText(p => !p);
       return;
     }
@@ -50,7 +49,7 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
       });
       const data = await apiRes.json();
       if (data.noText) {
-        setPhotoTranslation({ extracted: "", translated: "No text found" });
+        setPhotoTranslation({ extracted: "", translated: "No text found in photo" });
       } else {
         setPhotoTranslation({
           extracted: data.extractedText ?? "",
@@ -67,79 +66,118 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
 
   return (
     <>
-      {/* Lightbox */}
+      {/* Lightbox — full screen overlay, NOT a new tab */}
       {lightboxOpen && message.photoUrl && (
-        <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "rgba(0,0,0,0.97)" }}>
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 9999,
+            background: "rgba(0,0,0,0.97)",
+            display: "flex", flexDirection: "column",
+          }}
+        >
           {/* Top bar */}
-          <div className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-            style={{ background: "rgba(0,0,0,0.7)" }}>
-            <button onClick={() => { setLightboxOpen(false); setZoom(1); }}
-              className="text-white text-sm font-bold px-3 py-1.5 rounded-full"
-              style={{ background: "rgba(255,255,255,0.15)" }}>
-              ✕
-            </button>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "12px 16px", background: "rgba(0,0,0,0.7)", flexShrink: 0,
+          }}>
+            <button
+              onClick={() => { setLightboxOpen(false); setZoom(1); }}
+              style={{
+                background: "rgba(255,255,255,0.15)", border: "none", color: "white",
+                padding: "6px 14px", borderRadius: 20, cursor: "pointer", fontSize: 13, fontWeight: 700,
+              }}>✕ Close</button>
 
-            {/* Zoom controls */}
-            <div className="flex items-center gap-2">
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button onClick={() => setZoom(z => Math.max(z - 0.5, 0.5))}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-lg"
-                style={{ background: "rgba(255,255,255,0.15)" }}>−</button>
-              <span className="text-white text-xs w-10 text-center">{Math.round(zoom * 100)}%</span>
+                style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "white", width: 32, height: 32, borderRadius: "50%", cursor: "pointer", fontSize: 18 }}>−</button>
+              <span style={{ color: "white", fontSize: 11, width: 40, textAlign: "center" }}>{Math.round(zoom * 100)}%</span>
               <button onClick={() => setZoom(z => Math.min(z + 0.5, 4))}
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-lg"
-                style={{ background: "rgba(255,255,255,0.15)" }}>+</button>
+                style={{ background: "rgba(255,255,255,0.15)", border: "none", color: "white", width: 32, height: 32, borderRadius: "50%", cursor: "pointer", fontSize: 18 }}>+</button>
             </div>
 
-            {/* Translate button */}
-            <button onClick={handleTranslatePhoto} disabled={translating}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full font-semibold text-xs text-white transition-all active:scale-95"
-              style={{ background: photoTranslation ? "#057642" : "#c8502a", minWidth: 90, justifyContent: "center" }}>
-              {translating ? (
-                <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Reading</>
-              ) : photoTranslation ? "🌐 Translated" : "🌐 Translate"}
+            <button
+              onClick={handleTranslatePhoto}
+              disabled={translating}
+              style={{
+                background: photoTranslation ? "#057642" : "#c8502a",
+                border: "none", color: "white",
+                padding: "6px 14px", borderRadius: 20, cursor: "pointer",
+                fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", gap: 6,
+                opacity: translating ? 0.7 : 1,
+              }}>
+              {translating ? "Reading..." : photoTranslation ? "🌐 Translated" : "🌐 Translate"}
             </button>
           </div>
 
-          {/* Image area with overlay */}
-          <div className="flex-1 overflow-auto flex items-center justify-center p-4 relative">
-            <div className="relative" style={{ transform: `scale(${zoom})`, transformOrigin: "center", transition: "transform 0.2s" }}>
-              <img src={message.photoUrl} alt="full size"
-                className="rounded-xl shadow-2xl block"
-                style={{ maxWidth: "85vw", maxHeight: "65vh", objectFit: "contain" }} />
+          {/* Image + overlay text */}
+          <div style={{
+            flex: 1, overflow: "auto", display: "flex",
+            alignItems: "center", justifyContent: "center", padding: 16,
+          }}>
+            <div style={{ position: "relative", display: "inline-block" }}>
+              <img
+                src={message.photoUrl}
+                alt="full size"
+                style={{
+                  maxWidth: "85vw", maxHeight: "60vh",
+                  objectFit: "contain", borderRadius: 12,
+                  display: "block",
+                  transform: `scale(${zoom})`,
+                  transformOrigin: "center",
+                  transition: "transform 0.2s",
+                }}
+              />
 
-              {/* Text overlay ON the photo */}
+              {/* Translated text overlaid ON the photo at bottom */}
               {photoTranslation && photoTranslation.extracted && (
-                <div className="absolute inset-0 flex items-end justify-center pb-3 px-3">
-                  <div className="w-full rounded-xl px-3 py-2"
-                    style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(4px)" }}>
-                    <p className="text-white text-sm font-medium leading-relaxed text-center">
-                      {showOriginalText ? photoTranslation.extracted : photoTranslation.translated}
-                    </p>
-                  </div>
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  background: "rgba(0,0,0,0.80)",
+                  borderRadius: "0 0 12px 12px",
+                  padding: "10px 14px",
+                  backdropFilter: "blur(4px)",
+                }}>
+                  <p style={{
+                    color: "white", fontSize: 14, fontWeight: 600,
+                    textAlign: "center", lineHeight: 1.5, margin: 0,
+                  }}>
+                    {showOriginalText ? photoTranslation.extracted : photoTranslation.translated}
+                  </p>
                 </div>
               )}
 
               {/* No text found */}
               {photoTranslation && !photoTranslation.extracted && (
-                <div className="absolute inset-0 flex items-end justify-center pb-3 px-3">
-                  <div className="rounded-xl px-3 py-2" style={{ background: "rgba(0,0,0,0.7)" }}>
-                    <p className="text-white text-xs italic">{photoTranslation.translated}</p>
-                  </div>
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  background: "rgba(0,0,0,0.75)", borderRadius: "0 0 12px 12px",
+                  padding: "8px 14px",
+                }}>
+                  <p style={{ color: "rgba(255,255,255,0.7)", fontSize: 12, textAlign: "center", margin: 0, fontStyle: "italic" }}>
+                    {photoTranslation.translated}
+                  </p>
                 </div>
               )}
             </div>
           </div>
 
-          {/* Bottom toggle bar — only show if translated */}
+          {/* Bottom toggle */}
           {photoTranslation && photoTranslation.extracted && (
-            <div className="flex-shrink-0 flex items-center justify-center gap-3 px-4 py-3"
-              style={{ background: "rgba(0,0,0,0.7)" }}>
-              <p className="text-white text-xs opacity-60">
-                {showOriginalText ? "Showing original text" : `Showing ${preferredLang === "en" ? "English" : "Vietnamese"} translation`}
-              </p>
-              <button onClick={() => setShowOriginalText(p => !p)}
-                className="px-4 py-1.5 rounded-full text-xs font-bold text-white transition-all active:scale-95"
-                style={{ background: "#c8502a" }}>
+            <div style={{
+              flexShrink: 0, display: "flex", alignItems: "center",
+              justifyContent: "center", gap: 12,
+              padding: "12px 16px", background: "rgba(0,0,0,0.7)",
+            }}>
+              <span style={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}>
+                {showOriginalText ? "Original text" : `${preferredLang === "en" ? "English" : "Vietnamese"} translation`}
+              </span>
+              <button
+                onClick={() => setShowOriginalText(p => !p)}
+                style={{
+                  background: "#c8502a", border: "none", color: "white",
+                  padding: "6px 16px", borderRadius: 20, cursor: "pointer",
+                  fontSize: 12, fontWeight: 700,
+                }}>
                 {showOriginalText ? "Show Translation" : "Show Original"}
               </button>
             </div>
@@ -147,37 +185,43 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
         </div>
       )}
 
-      <div className={`flex ${isMe ? "justify-end" : "justify-start"} mb-2 px-3`}>
+      <div style={{ display: "flex", justifyContent: isMe ? "flex-end" : "flex-start", marginBottom: 8, padding: "0 12px" }}>
         {!isMe && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold mr-2 mt-1 flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, #c8502a, #e8733a)" }}>
-            TN
-          </div>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: "linear-gradient(135deg, #c8502a, #e8733a)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "white", fontSize: 11, fontWeight: 700,
+            marginRight: 8, marginTop: 4, flexShrink: 0,
+          }}>MA</div>
         )}
 
-        <div className={`flex flex-col ${isMe ? "items-end" : "items-start"} max-w-[75%]`}>
-          <div className="rounded-2xl shadow-sm overflow-hidden"
-            style={{
-              background: isMe ? meBubble : friendBubble,
-              borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-              border: isMe ? "none" : "1px solid #f0d9c8",
-            }}>
-
+        <div style={{ display: "flex", flexDirection: "column", alignItems: isMe ? "flex-end" : "flex-start", maxWidth: "75%" }}>
+          <div style={{
+            background: isMe ? meBubble : friendBubble,
+            borderRadius: isMe ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
+            border: isMe ? "none" : "1px solid #f0d9c8",
+            overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,0.08)",
+          }}>
             {/* Photo */}
             {message.photoUrl && (
               <div>
-                <div className="relative cursor-pointer group" onClick={() => setLightboxOpen(true)}>
-                  <img src={message.photoUrl} alt="uploaded" className="block w-56 h-44 object-cover" />
-                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                    style={{ background: "rgba(0,0,0,0.3)" }}>
-                    <span className="text-white text-xs font-semibold bg-black/50 px-3 py-1.5 rounded-full">🔍 View</span>
+                <div style={{ position: "relative", cursor: "pointer" }} onClick={() => setLightboxOpen(true)}>
+                  <img src={message.photoUrl} alt="uploaded" style={{ display: "block", width: 224, height: 176, objectFit: "cover" }} />
+                  <div style={{
+                    position: "absolute", inset: 0, background: "rgba(0,0,0,0)", display: "flex",
+                    alignItems: "center", justifyContent: "center", transition: "background 0.2s",
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "rgba(0,0,0,0.25)")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "rgba(0,0,0,0)")}>
+                    <span style={{ color: "white", fontSize: 12, fontWeight: 700, background: "rgba(0,0,0,0.5)", padding: "4px 12px", borderRadius: 12, opacity: 0 }}
+                      onMouseEnter={e => (e.currentTarget.style.opacity = "1")}
+                      onMouseLeave={e => (e.currentTarget.style.opacity = "0")}>🔍 View</span>
                   </div>
                 </div>
-                <div className="px-3 py-1.5 flex items-center gap-1"
-                  style={{ background: isMe ? "rgba(0,0,0,0.15)" : "#fff3ec" }}>
-                  <span className="text-xs">🌐</span>
-                  <p className="text-[11px] font-medium"
-                    style={{ color: isMe ? "rgba(255,255,255,0.75)" : "#8b4513" }}>
+                <div style={{ padding: "6px 12px", background: isMe ? "rgba(0,0,0,0.15)" : "#fff3ec", display: "flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ fontSize: 11 }}>🌐</span>
+                  <p style={{ fontSize: 11, fontWeight: 500, color: isMe ? "rgba(255,255,255,0.75)" : "#8b4513", margin: 0 }}>
                     Tap photo → Translate text
                   </p>
                 </div>
@@ -186,35 +230,35 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
 
             {/* Voice message */}
             {message.audioUrl && (
-              <div className="px-4 py-3 space-y-2">
-                <div className="flex items-center gap-3">
-                  <button onClick={toggleAudio}
-                    className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                    style={{ background: isMe ? "rgba(255,255,255,0.25)" : "#c8502a" }}>
-                    <span className="text-white text-sm">{playing ? "⏸" : "▶"}</span>
-                  </button>
-                  <div className="flex-1 flex items-end gap-0.5 h-8">
+              <div style={{ padding: "12px 16px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <button onClick={toggleAudio} style={{
+                    width: 36, height: 36, borderRadius: "50%",
+                    background: isMe ? "rgba(255,255,255,0.25)" : "#c8502a",
+                    border: "none", cursor: "pointer", color: "white", fontSize: 13, flexShrink: 0,
+                  }}>{playing ? "⏸" : "▶"}</button>
+                  <div style={{ flex: 1, display: "flex", alignItems: "flex-end", gap: 2, height: 32 }}>
                     {Array.from({ length: 24 }).map((_, i) => (
-                      <div key={i} className="rounded-full flex-1"
-                        style={{
-                          height: `${30 + Math.sin(i * 0.9) * 50}%`,
-                          background: isMe ? "rgba(255,255,255,0.7)" : "#e8733a",
-                          opacity: playing ? 1 : 0.4,
-                        }} />
+                      <div key={i} style={{
+                        flex: 1, borderRadius: 2,
+                        height: `${30 + Math.sin(i * 0.9) * 50}%`,
+                        background: isMe ? "rgba(255,255,255,0.7)" : "#e8733a",
+                        opacity: playing ? 1 : 0.4,
+                      }} />
                     ))}
                   </div>
-                  <audio ref={audioRef} src={message.audioUrl} onEnded={() => setPlaying(false)} className="hidden" />
+                  <audio ref={audioRef} src={message.audioUrl} onEnded={() => setPlaying(false)} style={{ display: "none" }} />
                 </div>
                 {message.isTranscribing && (
-                  <p className="text-xs opacity-50 italic">Transcribing...</p>
+                  <p style={{ fontSize: 11, color: isMe ? "rgba(255,255,255,0.6)" : "#8b4513", fontStyle: "italic", marginTop: 8 }}>Transcribing...</p>
                 )}
                 {message.transcribedText && !message.isTranscribing && (
-                  <div className="pt-2 border-t" style={{ borderColor: isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8" }}>
-                    <p className="text-xs leading-relaxed" style={{ color: isMe ? "white" : "#2d1a0e" }}>
-                      {message.transcribedText}
-                    </p>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
+                    <p style={{ fontSize: 13, color: isMe ? "white" : "#2d1a0e", margin: 0 }}>{message.transcribedText}</p>
                     {message.translatedAudioText && message.translatedAudioText !== message.transcribedText && (
-                      <p className="text-xs italic opacity-70 mt-1">🌐 {message.translatedAudioText}</p>
+                      <p style={{ fontSize: 12, color: isMe ? "rgba(255,255,255,0.7)" : "#8b4513", fontStyle: "italic", marginTop: 4, margin: "4px 0 0" }}>
+                        🌐 {message.translatedAudioText}
+                      </p>
                     )}
                   </div>
                 )}
@@ -223,36 +267,47 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
 
             {/* Regular text */}
             {!message.photoUrl && !message.audioUrl && (
-              <div className="px-4 py-2.5">
-                <p className="text-sm leading-relaxed" style={{ color: isMe ? "white" : "#2d1a0e" }}>
+              <div style={{ padding: "10px 16px" }}>
+                <p style={{ fontSize: 14, lineHeight: 1.5, margin: 0, color: isMe ? "white" : "#2d1a0e" }}>
                   {message.showOriginal ? message.text : (message.translatedText || message.text)}
                 </p>
                 {message.isTranslating && (
-                  <div className="flex items-center gap-1 mt-1.5 pt-1.5"
-                    style={{ borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 6, paddingTop: 6, borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
                     {[0, 150, 300].map(d => (
-                      <span key={d} className="w-1.5 h-1.5 rounded-full animate-bounce"
-                        style={{ background: isMe ? "rgba(255,255,255,0.7)" : "#c8502a", animationDelay: `${d}ms` }} />
+                      <span key={d} style={{
+                        width: 6, height: 6, borderRadius: "50%",
+                        background: isMe ? "rgba(255,255,255,0.7)" : "#c8502a",
+                        display: "inline-block", animation: "bounce 1s infinite",
+                        animationDelay: `${d}ms`,
+                      }} />
                     ))}
-                    <span className="text-[10px] opacity-50 ml-1">Translating...</span>
+                    <span style={{ fontSize: 10, opacity: 0.5, marginLeft: 4, color: isMe ? "white" : "#2d1a0e" }}>Translating...</span>
                   </div>
                 )}
                 {message.translatedText && !message.isTranslating && (
-                  <div className="mt-1.5 pt-1.5"
-                    style={{ borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
-                    <p className="text-[9px] font-bold uppercase tracking-wider opacity-50">🌐 from {langLabel}</p>
-                    <p className="text-[11px] opacity-55 italic mt-0.5">"{message.text}"</p>
+                  <div style={{ marginTop: 6, paddingTop: 6, borderTop: `1px solid ${isMe ? "rgba(255,255,255,0.2)" : "#f0d9c8"}` }}>
+                    <p style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", opacity: 0.5, margin: "0 0 2px", color: isMe ? "white" : "#2d1a0e" }}>
+                      🌐 from {langLabel}
+                    </p>
+                    {/* Fix: original text visible with proper contrast */}
+                    <p style={{
+                      fontSize: 11, fontStyle: "italic", margin: 0,
+                      color: isMe ? "rgba(255,255,255,0.85)" : "#5a3a1a",
+                    }}>
+                      &ldquo;{message.text}&rdquo;
+                    </p>
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          <div className={`flex items-center gap-2 mt-1 ${isMe ? "flex-row-reverse" : "flex-row"}`}>
-            <span className="text-[10px] text-gray-400">{time}</span>
+          {/* Time + toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexDirection: isMe ? "row-reverse" : "row" }}>
+            <span style={{ fontSize: 10, color: "#999" }}>{time}</span>
             {!message.photoUrl && !message.audioUrl && message.translatedText && !message.isTranslating && (
               <button onClick={() => onToggleOriginal(message.id)}
-                className="text-[10px] font-semibold" style={{ color: "#c8502a" }}>
+                style={{ fontSize: 10, fontWeight: 600, color: "#c8502a", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
                 {message.showOriginal ? "Show translation" : "Show original"}
               </button>
             )}
@@ -260,10 +315,13 @@ export default function MessageBubble({ message, onToggleOriginal, preferredLang
         </div>
 
         {isMe && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ml-2 mt-1 flex-shrink-0"
-            style={{ background: "linear-gradient(135deg, #8b4513, #c8502a)" }}>
-            U
-          </div>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            background: "linear-gradient(135deg, #8b4513, #c8502a)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "white", fontSize: 11, fontWeight: 700,
+            marginLeft: 8, marginTop: 4, flexShrink: 0,
+          }}>U</div>
         )}
       </div>
     </>

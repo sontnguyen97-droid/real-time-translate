@@ -8,13 +8,11 @@ export async function POST(req: NextRequest) {
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  const targetLangName = targetLang === "en" ? "English" : "Vietnamese";
 
   if (!apiKey) {
     return NextResponse.json({ noText: true, isMock: true });
   }
-
-  const targetLangName = targetLang === "en" ? "English" : "Vietnamese";
-  const otherLangName = targetLang === "en" ? "Vietnamese" : "English";
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -25,8 +23,8 @@ export async function POST(req: NextRequest) {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
+        model: "claude-opus-4-5",
+        max_tokens: 2048,
         messages: [
           {
             role: "user",
@@ -37,17 +35,26 @@ export async function POST(req: NextRequest) {
               },
               {
                 type: "text",
-                text: `Look at this image and extract any visible text.
+                text: `Analyze this image and find all text. For each distinct text block, estimate its position as a percentage of the image dimensions (0-100).
 
-Then return a JSON object with exactly this format (no markdown, no extra text):
-{
-  "extractedText": "the exact text you see in the image",
-  "translatedText": "translation of that text in ${targetLangName}",
-  "otherLangText": "translation of that text in ${otherLangName}"
-}
+Return a JSON array only — no markdown, no explanation:
+[
+  {
+    "original": "exact text as it appears",
+    "translated": "translation in ${targetLangName}",
+    "x": 50,
+    "y": 20,
+    "width": 40,
+    "fontSize": "large"
+  }
+]
 
-If there is NO text in the image, return:
-{ "noText": true }`,
+Where:
+- x, y = center position as % of image width/height
+- width = approximate width as % of image width  
+- fontSize = "small", "medium", or "large" based on text size in image
+
+If no text found, return: []`,
               },
             ],
           },
@@ -56,22 +63,18 @@ If there is NO text in the image, return:
     });
 
     const data = await res.json();
-    const raw = data.content?.[0]?.text?.trim() ?? "{}";
-
-    // Clean up potential markdown fences
+    const raw = data.content?.[0]?.text?.trim() ?? "[]";
     const clean = raw.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(clean);
 
-    if (parsed.noText) {
+    try {
+      const blocks = JSON.parse(clean);
+      if (!Array.isArray(blocks) || blocks.length === 0) {
+        return NextResponse.json({ noText: true });
+      }
+      return NextResponse.json({ blocks, isMock: false });
+    } catch {
       return NextResponse.json({ noText: true });
     }
-
-    return NextResponse.json({
-      extractedText: parsed.extractedText ?? "",
-      translatedText: parsed.translatedText ?? "",
-      otherLangText: parsed.otherLangText ?? "",
-      isMock: false,
-    });
   } catch {
     return NextResponse.json({ error: "OCR failed" }, { status: 500 });
   }

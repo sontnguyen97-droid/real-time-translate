@@ -1,3 +1,12 @@
+export interface TextBlock {
+  original: string;
+  translated: string;
+  x: number;      // center % of image width
+  y: number;      // center % of image height
+  width: number;  // % of image width
+  fontSize: "small" | "medium" | "large";
+}
+
 export interface Message {
   id: string;
   text: string;
@@ -7,15 +16,12 @@ export interface Message {
   translatedText?: string;
   isTranslating?: boolean;
   showOriginal?: boolean;
-  // Photo message
+  // Photo
   photoUrl?: string;
-  photoText?: string;
-  translatedPhotoText?: string;
-  otherLangPhotoText?: string;
+  photoBlocks?: TextBlock[];
   isProcessingPhoto?: boolean;
-  // Voice message
+  // Voice
   audioUrl?: string;
-  audioBlob?: Blob;
   transcribedText?: string;
   translatedAudioText?: string;
   isTranscribing?: boolean;
@@ -25,11 +31,11 @@ export type Language = "en" | "vi";
 
 export const FRIEND_PROFILE = {
   name: "Minh Anh",
-  avatar: "A",
+  avatar: "MA",
   status: "online",
 };
 
 export const MY_PROFILE = {
   name: "User",
-  avatar: "U",
+  avatar: "US",
 };
